@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
     int rv;
     char buf[4096] __attribute__((aligned));
 
-    FILE *file = fopen("top-1m.csv", "r");
+    FILE *file = fopen(argv[1], "r");
     if (file == NULL) {
         printf("파일을 열 수 없습니다.\n");
         return 1;
