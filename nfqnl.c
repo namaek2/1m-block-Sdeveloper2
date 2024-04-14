@@ -16,7 +16,11 @@
 struct tcphdr *tcp_header;
 struct iphdr *ip_header;
 
-char *target_url;
+char **domains;
+int count = 0;
+int temp_id = 0;
+
+// char *target_url;
 
 void dump(unsigned char *buf, int size) {
     int i;
@@ -94,9 +98,11 @@ static u_int32_t print_pkt(struct nfq_data *tb) {
                         strncpy(host, host_start, host_end - host_start);
                         host[host_end - host_start] = '\0';
 
-                        // Check if the extracted host matches the target_url
-                        if (strcmp(host, target_url) == 0) {
-                            return id - 10000000;
+                        for (int i = 0; i < count; i++) {
+                            if (strcmp(host, domains[i]) == 0) {
+                                temp_id = id;
+                                return 0;
+                            }
                         }
                     }
                 }
@@ -112,8 +118,8 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
     u_int32_t id = print_pkt(nfa);
     printf("entering callback\n");
 
-    if (id < 0)
-        return nfq_set_verdict(qh, id + 10000000, NF_DROP, 0, NULL);
+    if (id == 0)
+        return nfq_set_verdict(qh, temp_id, NF_DROP, 0, NULL);
 
     return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
 }
@@ -125,7 +131,37 @@ int main(int argc, char **argv) {
     int fd;
     int rv;
     char buf[4096] __attribute__((aligned));
-    target_url = argv[1];
+
+    FILE *file = fopen("top-1m.csv", "r");
+    if (file == NULL) {
+        printf("파일을 열 수 없습니다.\n");
+        return 1;
+    }
+
+    domains = (char **)malloc(1000000 * sizeof(char *));
+    if (domains == NULL) {
+        printf("메모리 할당 실패\n");
+        fclose(file);
+        return 1;
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file) && count < 1000000) {
+        char *token = strchr(line, ',');
+        if (token != NULL) {
+            token++;
+            domains[count] = (char *)malloc(100 * sizeof(char));
+            if (domains[count] == NULL) {
+                printf("메모리 할당 실패\n");
+                break;
+            }
+            strcpy(domains[count], token);
+            strtok(domains[count], "\n");
+            count++;
+        }
+    }
+
+    fclose(file);
 
     printf("opening library handle\n");
     h = nfq_open();
@@ -194,6 +230,11 @@ int main(int argc, char **argv) {
 
     printf("closing library handle\n");
     nfq_close(h);
+
+    for (int i = 0; i < count; i++) {
+        free(domains[i]);
+    }
+    free(domains);
 
     exit(0);
 }
